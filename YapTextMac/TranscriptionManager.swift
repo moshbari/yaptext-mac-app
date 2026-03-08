@@ -21,7 +21,7 @@ class TranscriptionManager: ObservableObject {
     private var audioRecorder: AVAudioRecorder?
     private var audioFileURL: URL?
     private var levelTimer: Timer?
-    private let silenceTimeout: TimeInterval = 2.5
+    private let silenceTimeout: TimeInterval = 30.0
     private var lastSpeechTime: Date = Date()
     private let silenceThreshold: Float = -40.0
     
@@ -192,11 +192,14 @@ class TranscriptionManager: ObservableObject {
         let text = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { statusMessage = "Ready — Press ⌘⇧D or click Start"; return }
         
+        // Always copy to clipboard
+        copyToClipboard(text)
+        
+        // Also try to insert into focused text field
         if insertTextIntoFocusedField(text) {
-            lastAction = "✅ Inserted into active text field"
-            statusMessage = "Done — Text inserted"
+            lastAction = "✅ Inserted into active text field + 📋 clipboard"
+            statusMessage = "Done — Text inserted + copied"
         } else {
-            copyToClipboard(text)
             lastAction = "📋 Copied to clipboard"
             statusMessage = "Done — Copied to clipboard"
         }

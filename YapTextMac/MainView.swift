@@ -221,11 +221,12 @@ struct MainView: View {
             // How It Works
             GroupBox("How It Works") {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("1. Press ⌘⇧D or click Start to dictate")
-                    Text("2. Speak — recording auto-stops after 2.5s silence")
-                    Text("3. Audio sent to OpenAI Whisper for transcription")
-                    Text("4. Text field focused → text inserted there")
-                    Text("5. No text field → copied to clipboard")
+                    Text("1. Press ⌘⇧D or click Start to record")
+                    Text("2. Speak — press ⌘⇧D again to stop")
+                    Text("3. Auto-stops after 30s of silence")
+                    Text("4. Audio sent to OpenAI Whisper for transcription")
+                    Text("5. Text field focused → inserted + copied to clipboard")
+                    Text("6. No text field → copied to clipboard")
                 }
                 .font(.caption)
                 .padding(6)

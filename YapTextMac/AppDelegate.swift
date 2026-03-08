@@ -15,6 +15,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastKnownAction: String = ""
     private var toastDismissWork: DispatchWorkItem?
     
+    // Floating recording overlay
+    private var overlayWindow: NSPanel?
+    private var overlayTimerLabel: NSTextField?
+    private var overlayStatusLabel: NSTextField?
+    private var overlayDots: [NSView] = []
+    private var overlayAnimTimer: Timer?
+    private var recordingStartTime: Date?
+    private var recordingTimerUpdate: Timer?
+    private var overlayDotFrame: Int = 0
+    
     func applicationDidFinishLaunching(_ notification: Notification) {
         transcriptionManager = TranscriptionManager()
         
@@ -52,13 +62,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if isRecording && !lastKnownRecording {
             lastKnownRecording = true
             startRecordingAnimation()
+            showRecordingOverlay()
         } else if !isRecording && lastKnownRecording {
             lastKnownRecording = false
             stopRecordingAnimation()
             if isTranscribing {
                 showTranscribingIcon()
+                updateOverlayToTranscribing()
             } else {
                 setIdleIcon()
+                dismissOverlay()
             }
         }
         
@@ -77,17 +90,221 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             lastKnownAction = currentAction
             stopRecordingAnimation()
             
+            // Show done state in overlay then dismiss
+            updateOverlayToDone(action: currentAction)
+            
             let preview = String(transcriptionManager.transcribedText.prefix(80))
             let previewText = transcriptionManager.transcribedText.count > 80 ? preview + "..." : preview
             
-            if currentAction.contains("clipboard") {
+            if currentAction.contains("clipboard") && !currentAction.contains("Inserted") {
                 showToast(title: "📋 Copied to Clipboard!", subtitle: "Press ⌘V to paste anywhere", preview: previewText)
                 flashMenuBarIcon(systemName: "doc.on.clipboard.fill", color: NSColor.systemBlue)
             } else if currentAction.contains("Inserted") {
-                showToast(title: "✅ Text Inserted!", subtitle: "Typed into the active text field", preview: previewText)
+                showToast(title: "✅ Text Inserted + Copied!", subtitle: "Also copied to clipboard", preview: previewText)
                 flashMenuBarIcon(systemName: "checkmark.circle.fill", color: NSColor.systemGreen)
             }
         }
+    }
+    
+    // MARK: - Floating Recording Overlay
+    
+    private func showRecordingOverlay() {
+        dismissOverlay()
+        
+        guard let screen = NSScreen.main else { return }
+        
+        let overlayWidth: CGFloat = 340
+        let overlayHeight: CGFloat = 44
+        let xPos = (screen.frame.width - overlayWidth) / 2 + screen.frame.origin.x
+        let yPos = screen.frame.origin.y + 80 // near bottom of screen
+        
+        let panel = NSPanel(
+            contentRect: NSRect(x: xPos, y: yPos, width: overlayWidth, height: overlayHeight),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        panel.level = .floating
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.ignoresMouseEvents = true
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        panel.isReleasedWhenClosed = false
+        
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: overlayWidth, height: overlayHeight))
+        
+        // Dark rounded background
+        let bgView = NSVisualEffectView(frame: container.bounds)
+        bgView.material = .hudWindow
+        bgView.state = .active
+        bgView.wantsLayer = true
+        bgView.layer?.cornerRadius = 22
+        bgView.layer?.masksToBounds = true
+        bgView.layer?.borderWidth = 1.0
+        bgView.layer?.borderColor = NSColor.systemRed.withAlphaComponent(0.5).cgColor
+        container.addSubview(bgView)
+        
+        // Animated dots (4 red dots)
+        overlayDots = []
+        let dotsStartX: CGFloat = 16
+        for i in 0..<4 {
+            let dot = NSView(frame: NSRect(x: dotsStartX + CGFloat(i) * 10, y: 17, width: 6, height: 6))
+            dot.wantsLayer = true
+            dot.layer?.cornerRadius = 3
+            dot.layer?.backgroundColor = NSColor.systemRed.cgColor
+            container.addSubview(dot)
+            overlayDots.append(dot)
+        }
+        
+        // Timer label (red)
+        let timerLabel = NSTextField(labelWithString: "00:00")
+        timerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        timerLabel.textColor = NSColor.systemRed
+        timerLabel.frame = NSRect(x: 60, y: 12, width: 50, height: 20)
+        container.addSubview(timerLabel)
+        overlayTimerLabel = timerLabel
+        
+        // Status label
+        let statusLabel = NSTextField(labelWithString: "Recording — press ⌘⇧D to stop")
+        statusLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        statusLabel.textColor = NSColor.secondaryLabelColor
+        statusLabel.frame = NSRect(x: 114, y: 12, width: 220, height: 20)
+        container.addSubview(statusLabel)
+        overlayStatusLabel = statusLabel
+        
+        panel.contentView = container
+        
+        // Show with fade-in
+        panel.alphaValue = 0
+        panel.orderFront(nil)
+        overlayWindow = panel
+        
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.2
+            panel.animator().alphaValue = 1
+        })
+        
+        // Start timer
+        recordingStartTime = Date()
+        recordingTimerUpdate = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.updateRecordingTimer()
+        }
+        
+        // Start dot animation
+        overlayDotFrame = 0
+        overlayAnimTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            self?.animateOverlayDots()
+        }
+    }
+    
+    private func updateRecordingTimer() {
+        guard let start = recordingStartTime else { return }
+        let elapsed = Int(Date().timeIntervalSince(start))
+        let mins = elapsed / 60
+        let secs = elapsed % 60
+        overlayTimerLabel?.stringValue = String(format: "%02d:%02d", mins, secs)
+    }
+    
+    private func animateOverlayDots() {
+        overlayDotFrame = (overlayDotFrame + 1) % 4
+        for (i, dot) in overlayDots.enumerated() {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.2
+                let scale: CGFloat = (i == overlayDotFrame || i == (overlayDotFrame + 1) % 4) ? 1.0 : 0.5
+                dot.animator().alphaValue = scale
+            })
+        }
+    }
+    
+    private func updateOverlayToTranscribing() {
+        // Stop timer and dot animation
+        recordingTimerUpdate?.invalidate()
+        recordingTimerUpdate = nil
+        overlayAnimTimer?.invalidate()
+        overlayAnimTimer = nil
+        
+        // Update dots to orange
+        for dot in overlayDots {
+            dot.layer?.backgroundColor = NSColor.systemOrange.cgColor
+            dot.alphaValue = 1.0
+        }
+        
+        // Update border color
+        if let bgView = overlayWindow?.contentView?.subviews.first as? NSVisualEffectView {
+            bgView.layer?.borderColor = NSColor.systemOrange.withAlphaComponent(0.5).cgColor
+        }
+        
+        // Update labels
+        overlayTimerLabel?.textColor = NSColor.systemOrange
+        overlayStatusLabel?.stringValue = "Transcribing..."
+        overlayStatusLabel?.textColor = NSColor.systemOrange
+        
+        // Pulse animation for dots
+        overlayAnimTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            self.overlayDotFrame = (self.overlayDotFrame + 1) % 4
+            for (i, dot) in self.overlayDots.enumerated() {
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.3
+                    dot.animator().alphaValue = (i == self.overlayDotFrame) ? 1.0 : 0.3
+                })
+            }
+        }
+    }
+    
+    private func updateOverlayToDone(action: String) {
+        overlayAnimTimer?.invalidate()
+        overlayAnimTimer = nil
+        recordingTimerUpdate?.invalidate()
+        recordingTimerUpdate = nil
+        
+        // Update dots to green
+        for dot in overlayDots {
+            dot.layer?.backgroundColor = NSColor.systemGreen.cgColor
+            dot.alphaValue = 1.0
+        }
+        
+        if let bgView = overlayWindow?.contentView?.subviews.first as? NSVisualEffectView {
+            bgView.layer?.borderColor = NSColor.systemGreen.withAlphaComponent(0.5).cgColor
+        }
+        
+        overlayTimerLabel?.textColor = NSColor.systemGreen
+        overlayTimerLabel?.stringValue = "✓"
+        
+        if action.contains("Inserted") {
+            overlayStatusLabel?.stringValue = "Done — Text inserted + copied"
+        } else {
+            overlayStatusLabel?.stringValue = "Done — Copied to clipboard"
+        }
+        overlayStatusLabel?.textColor = NSColor.systemGreen
+        
+        // Auto-dismiss after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            self?.dismissOverlay()
+        }
+    }
+    
+    private func dismissOverlay() {
+        overlayAnimTimer?.invalidate()
+        overlayAnimTimer = nil
+        recordingTimerUpdate?.invalidate()
+        recordingTimerUpdate = nil
+        recordingStartTime = nil
+        overlayDots = []
+        
+        guard let window = overlayWindow else { return }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.3
+            window.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            window.orderOut(nil)
+            window.close()
+            if self?.overlayWindow === window {
+                self?.overlayWindow = nil
+            }
+        })
     }
     
     // MARK: - Toast Notification (simple NSPanel approach)
@@ -200,6 +417,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let image = NSImage(systemSymbolName: systemName, accessibilityDescription: "Done") {
             let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .bold)
             let configured = image.withSymbolConfiguration(config) ?? image
+            configured.isTemplate = false
             button.image = configured
             button.contentTintColor = color
         }
@@ -218,7 +436,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = statusItem.button,
            let image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Recording") {
             let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .bold)
-            button.image = image.withSymbolConfiguration(config) ?? image
+            let configured = image.withSymbolConfiguration(config) ?? image
+            configured.isTemplate = false
+            button.image = configured
             button.contentTintColor = NSColor.systemRed
         }
         
@@ -228,7 +448,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let iconName = self.animationFrame == 0 ? "mic.fill" : "mic.circle.fill"
             if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Recording") {
                 let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .bold)
-                button.image = image.withSymbolConfiguration(config) ?? image
+                let configured = image.withSymbolConfiguration(config) ?? image
+                configured.isTemplate = false
+                button.image = configured
                 button.contentTintColor = NSColor.systemRed
             }
         }
@@ -240,7 +462,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = statusItem.button,
            let image = NSImage(systemSymbolName: "ellipsis.circle.fill", accessibilityDescription: "Transcribing") {
             let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-            button.image = image.withSymbolConfiguration(config) ?? image
+            let configured = image.withSymbolConfiguration(config) ?? image
+            configured.isTemplate = false
+            button.image = configured
             button.contentTintColor = NSColor.systemOrange
         }
     }
@@ -255,7 +479,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         if let image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "YapTextMac") {
             let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-            button.image = image.withSymbolConfiguration(config) ?? image
+            let configured = image.withSymbolConfiguration(config) ?? image
+            configured.isTemplate = true
+            button.image = configured
             button.contentTintColor = nil
         }
     }
