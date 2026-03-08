@@ -53,6 +53,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     // MARK: - State Polling
     
+    private var lastKnownTranscribing: Bool = false
+    
     private func pollStateChanges() {
         let isRecording = transcriptionManager.isRecording
         let isTranscribing = transcriptionManager.statusMessage.contains("⏳")
@@ -69,23 +71,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if isTranscribing {
                 showTranscribingIcon()
                 updateOverlayToTranscribing()
+                lastKnownTranscribing = true
             } else {
                 setIdleIcon()
                 dismissOverlay()
             }
         }
         
-        // Handle transcribing
-        if !isRecording && isTranscribing {
+        // Handle transcribing state start (in case we missed the recording→transcribing transition)
+        if !isRecording && isTranscribing && !lastKnownTranscribing {
             showTranscribingIcon()
+            updateOverlayToTranscribing()
+            lastKnownTranscribing = true
         }
         
-        // Handle done states — reset icon
-        if !isRecording && !isTranscribing && !currentAction.isEmpty && currentAction == lastKnownAction {
-            // Already handled
+        // Handle transcribing → done transition
+        if lastKnownTranscribing && !isTranscribing {
+            lastKnownTranscribing = false
+            setIdleIcon()
         }
         
-        // Handle new action
+        // Handle new action (transcription complete)
         if !currentAction.isEmpty && currentAction != lastKnownAction {
             lastKnownAction = currentAction
             stopRecordingAnimation()
@@ -102,6 +108,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             } else if currentAction.contains("Inserted") {
                 showToast(title: "✅ Text Inserted + Copied!", subtitle: "Also copied to clipboard", preview: previewText)
                 flashMenuBarIcon(systemName: "checkmark.circle.fill", color: NSColor.systemGreen)
+            }
+        }
+        
+        // Safety: if overlay is still visible but nothing is happening, dismiss it
+        if overlayWindow != nil && !isRecording && !isTranscribing && !currentAction.isEmpty && currentAction == lastKnownAction {
+            // Give it a moment then dismiss if still stuck
+            if recordingStartTime == nil {
+                dismissOverlay()
             }
         }
     }
