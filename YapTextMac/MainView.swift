@@ -218,12 +218,38 @@ struct MainView: View {
                 .padding(6)
             }
             
+            // Silence Timeout
+            GroupBox("Silence Auto-Stop") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Stop recording after this much silence:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Picker("", selection: $transcriptionManager.silenceTimeoutSeconds) {
+                        ForEach(TranscriptionManager.silenceOptions, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    
+                    HStack(spacing: 4) {
+                        Image(systemName: "info.circle")
+                            .font(.caption2)
+                        Text("Lower = faster auto-stop. Higher = more thinking time between words.")
+                            .font(.caption2)
+                    }
+                    .foregroundColor(.secondary)
+                }
+                .padding(6)
+            }
+            
             // How It Works
             GroupBox("How It Works") {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("1. Press ⌘⇧D or click Start to record")
                     Text("2. Speak — press ⌘⇧D again to stop")
-                    Text("3. Auto-stops after 30s of silence")
+                    Text("3. Auto-stops after \(Int(transcriptionManager.silenceTimeoutSeconds))s of silence")
                     Text("4. Audio sent to OpenAI Whisper for transcription")
                     Text("5. Text field focused → inserted + copied to clipboard")
                     Text("6. No text field → copied to clipboard")

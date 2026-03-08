@@ -15,19 +15,33 @@ class TranscriptionManager: ObservableObject {
         willSet { objectWillChange.send() }
         didSet { saveAPIKey(apiKey) }
     }
+    var silenceTimeoutSeconds: Double = 3.0 {
+        willSet { objectWillChange.send() }
+        didSet { UserDefaults.standard.set(silenceTimeoutSeconds, forKey: "silenceTimeoutSeconds") }
+    }
     
     let objectWillChange = ObservableObjectPublisher()
+    
+    static let silenceOptions: [(label: String, value: Double)] = [
+        ("3 seconds", 3.0),
+        ("5 seconds", 5.0),
+        ("10 seconds", 10.0),
+        ("15 seconds", 15.0),
+        ("30 seconds", 30.0),
+        ("60 seconds", 60.0)
+    ]
     
     private var audioRecorder: AVAudioRecorder?
     private var audioFileURL: URL?
     private var levelTimer: Timer?
-    private let silenceTimeout: TimeInterval = 30.0
     private var lastSpeechTime: Date = Date()
     private let silenceThreshold: Float = -40.0
     
     init() {
         let saved = TranscriptionManager.loadAPIKey() ?? ""
         self.apiKey = saved
+        let savedTimeout = UserDefaults.standard.double(forKey: "silenceTimeoutSeconds")
+        self.silenceTimeoutSeconds = savedTimeout > 0 ? savedTimeout : 3.0
         checkMicrophonePermission()
     }
     
@@ -120,7 +134,7 @@ class TranscriptionManager: ObservableObject {
         let averagePower = recorder.averagePower(forChannel: 0)
         if averagePower > silenceThreshold {
             lastSpeechTime = Date()
-        } else if Date().timeIntervalSince(lastSpeechTime) >= silenceTimeout {
+        } else if Date().timeIntervalSince(lastSpeechTime) >= silenceTimeoutSeconds {
             DispatchQueue.main.async { [weak self] in self?.stopRecording() }
         }
     }
