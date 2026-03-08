@@ -63,6 +63,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Handle recording state change
         if isRecording && !lastKnownRecording {
             lastKnownRecording = true
+            lastKnownAction = "" // Reset so done detection works even if same action repeats
+            lastKnownTranscribing = false
             startRecordingAnimation()
             showRecordingOverlay()
         } else if !isRecording && lastKnownRecording {
