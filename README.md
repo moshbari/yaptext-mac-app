@@ -6,14 +6,15 @@ A native macOS menu bar app that transcribes your voice using **OpenAI Whisper A
 
 ## Features
 
-- **OpenAI Whisper API** — Superior transcription accuracy
+- **OpenAI Whisper API** — Superior transcription accuracy with **auto-punctuation** (commas, periods, question marks, capitalization)
+- **AI Polish with 11 Tones** — Optionally clean up transcribed text in the tone you want: Fix Only, Friendly Pro, Executive, Supportive, Creator, Academic, Simple, Concise, Elaborate, Email, Message
 - **Menu Bar App** — Lives in your menu bar, always accessible
 - **Global Hotkey** — `⌘⇧D` to start/stop recording from anywhere
 - **Smart Text Insertion** — Auto-detects focused text fields:
   - Text field focused → types directly into it
   - No text field → copies to clipboard
 - **Visual Feedback** — Menu bar icon animates red while recording, orange while transcribing, and shows a toast notification when done
-- **Auto-Stop** — Stops recording after 2.5s of silence
+- **Auto-Stop** — Stops recording after configurable silence (default 3s)
 - **Secure API Key** — Stored in macOS Keychain
 - **Lightweight** — No Dock icon, minimal resource usage (~30MB RAM)
 
@@ -84,7 +85,8 @@ YapTextMac/
 ├── YapTextMacApp.swift          → App entry point (menu bar only)
 ├── AppDelegate.swift            → Menu bar icon, animations, hotkey, toast notifications
 ├── TranscriptionManager.swift   → Audio recording, Whisper API, text insertion, Keychain
-├── MainView.swift               → SwiftUI popover UI + settings
+├── PolishService.swift          → AI Polish with 11 tones (GPT-4o-mini)
+├── MainView.swift               → SwiftUI popover UI + settings + tone picker
 ├── Info.plist                   → App configuration
 └── YapTextMac.entitlements      → Permissions
 ```

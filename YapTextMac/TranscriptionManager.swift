@@ -166,6 +166,8 @@ class TranscriptionManager: ObservableObject {
         appendField("model", "whisper-1")
         appendField("language", "en")
         appendField("response_format", "text")
+        // Punctuation prompt — biases Whisper to add commas, periods, question marks, capitalization
+        appendField("prompt", "Hello, welcome to the meeting. How are you doing today? I'm doing great, thanks for asking. Let's discuss the project. We need to finalize the design, review the budget, and schedule the next call.")
         
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\r\n".data(using: .utf8)!)

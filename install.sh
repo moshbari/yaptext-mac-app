@@ -97,6 +97,7 @@ swiftc \
     -parse-as-library \
     -O \
     "$SOURCE_DIR/TranscriptionManager.swift" \
+    "$SOURCE_DIR/PolishService.swift" \
     "$SOURCE_DIR/MainView.swift" \
     "$SOURCE_DIR/AppDelegate.swift" \
     "$SOURCE_DIR/YapTextMacApp.swift" \
