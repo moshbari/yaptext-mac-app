@@ -16,6 +16,13 @@ struct MainView: View {
                     .foregroundColor(.accentColor)
                 Text("YapTextMac")
                     .font(.headline)
+                Text(appVersion)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.15))
+                    .cornerRadius(4)
                 Spacer()
                 Button(action: { showSettings.toggle() }) {
                     Image(systemName: "gearshape.fill")
@@ -379,6 +386,11 @@ struct MainView: View {
     }
     
     // MARK: - Helpers
+    
+    private var appVersion: String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        return "v\(v)"
+    }
     
     private var displayText: String {
         if showPolishedSection && !polishService.polishedText.isEmpty {
