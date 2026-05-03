@@ -19,6 +19,13 @@ class TranscriptionManager: ObservableObject {
         willSet { objectWillChange.send() }
         didSet { UserDefaults.standard.set(silenceTimeoutSeconds, forKey: "silenceTimeoutSeconds") }
     }
+    var autoPasteEnabled: Bool = true {
+        willSet { objectWillChange.send() }
+        didSet { UserDefaults.standard.set(autoPasteEnabled, forKey: "autoPasteEnabled") }
+    }
+    
+    // Target app for auto-paste — captured at recording start
+    private var targetApp: NSRunningApplication?
     
     let objectWillChange = ObservableObjectPublisher()
     
@@ -42,6 +49,9 @@ class TranscriptionManager: ObservableObject {
         self.apiKey = saved
         let savedTimeout = UserDefaults.standard.double(forKey: "silenceTimeoutSeconds")
         self.silenceTimeoutSeconds = savedTimeout > 0 ? savedTimeout : 3.0
+        if let savedAutoPaste = UserDefaults.standard.object(forKey: "autoPasteEnabled") as? Bool {
+            self.autoPasteEnabled = savedAutoPaste
+        }
         checkMicrophonePermission()
     }
     
@@ -78,6 +88,14 @@ class TranscriptionManager: ObservableObject {
     func startRecording() {
         guard hasPermissions else { requestPermissions(); return }
         guard !apiKey.isEmpty else { statusMessage = "⚠️ Enter your OpenAI API key first"; return }
+        
+        // Capture target app for auto-paste — only if it's NOT YapTextMac itself
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        if let app = frontmost, app.bundleIdentifier != Bundle.main.bundleIdentifier {
+            targetApp = app
+        } else {
+            targetApp = nil
+        }
         
         transcribedText = ""
         lastAction = ""
@@ -208,68 +226,50 @@ class TranscriptionManager: ObservableObject {
         let text = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { statusMessage = "Ready — Press ⌘⇧D or click Start"; return }
         
-        // Always copy to clipboard
+        // Always copy to clipboard first
         copyToClipboard(text)
         
-        // Also try to insert into focused text field
-        if insertTextIntoFocusedField(text) {
-            lastAction = "✅ Inserted into active text field + 📋 clipboard"
-            statusMessage = "Done — Text inserted + copied"
-        } else {
-            lastAction = "📋 Copied to clipboard"
+        // If auto-paste is OFF → just clipboard
+        guard autoPasteEnabled else {
+            lastAction = "📋 Copied — paste with ⌘V"
             statusMessage = "Done — Copied to clipboard"
+            return
+        }
+        
+        // Need Accessibility permission to simulate keystrokes
+        guard AXIsProcessTrusted() else {
+            lastAction = "📋 Copied — Grant Accessibility for auto-paste"
+            statusMessage = "Done — Copied to clipboard"
+            return
+        }
+        
+        // Need a target app that isn't YapTextMac
+        guard let target = targetApp else {
+            lastAction = "📋 Copied — Use ⌘⇧D from your text field next time"
+            statusMessage = "Done — Copied to clipboard"
+            return
+        }
+        
+        // Activate the target app, then paste
+        target.activate(options: [])
+        let appName = target.localizedName ?? "app"
+        statusMessage = "⌘V → \(appName)..."
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+            self?.simulateCmdV()
+            self?.lastAction = "✅ Auto-pasted into \(appName)"
+            self?.statusMessage = "Done — Auto-pasted into \(appName)"
         }
     }
     
-    private func insertTextIntoFocusedField(_ text: String) -> Bool {
-        guard AXIsProcessTrusted() else { return false }
-        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return false }
-        
-        let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
-        var focusedElement: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement) == .success,
-              let element = focusedElement else { return false }
-        
-        let axElement = element as! AXUIElement
-        var role: CFTypeRef?
-        AXUIElementCopyAttributeValue(axElement, kAXRoleAttribute as CFString, &role)
-        
-        if let roleStr = role as? String,
-           roleStr == kAXTextFieldRole || roleStr == kAXTextAreaRole || roleStr == "AXComboBox" || roleStr == "AXSearchField" {
-            var currentValue: CFTypeRef?
-            AXUIElementCopyAttributeValue(axElement, kAXValueAttribute as CFString, &currentValue)
-            let newText: String
-            if let existing = currentValue as? String, !existing.isEmpty {
-                newText = existing + " " + text
-            } else {
-                newText = text
-            }
-            return AXUIElementSetAttributeValue(axElement, kAXValueAttribute as CFString, newText as CFTypeRef) == .success
-        }
-        return insertViaKeyboardSimulation(text)
-    }
-    
-    private func insertViaKeyboardSimulation(_ text: String) -> Bool {
-        let pasteboard = NSPasteboard.general
-        let prev = pasteboard.string(forType: .string)
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        
+    private func simulateCmdV() {
         let source = CGEventSource(stateID: .hidSystemState)
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false) else { return false }
+              let up = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false) else { return }
         down.flags = .maskCommand
         up.flags = .maskCommand
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
-        
-        if let prev = prev {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                pasteboard.clearContents()
-                pasteboard.setString(prev, forType: .string)
-            }
-        }
-        return true
     }
     
     private func copyToClipboard(_ text: String) {

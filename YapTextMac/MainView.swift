@@ -358,6 +358,32 @@ struct MainView: View {
                     .padding(6)
                 }
                 
+                // Auto-paste toggle
+                GroupBox("Auto-Paste") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle(isOn: $transcriptionManager.autoPasteEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Auto-paste into active text field")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                Text("After transcription, simulates ⌘V into the app you were using when you started recording.")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "info.circle")
+                                .font(.caption2)
+                            Text("Tip: Click in your text field FIRST, then press ⌘⇧D to start.")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.secondary)
+                    }
+                    .padding(6)
+                }
+                
                 // How It Works
                 GroupBox("How It Works") {
                     VStack(alignment: .leading, spacing: 6) {
