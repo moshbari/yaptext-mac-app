@@ -141,6 +141,13 @@ rm -rf "$BUILD_DIR"
 
 codesign --force --deep --sign - "$DEST" 2>/dev/null
 
+# Every rebuild gives the ad-hoc binary a new code identity, which silently
+# invalidates the previous macOS Accessibility grant (auto-paste falls back
+# to clipboard-only). Reset the grant so the next launch starts clean and
+# the user gets a fresh, working permission flow.
+tccutil reset Accessibility com.moshbari.yaptextmac >/dev/null 2>&1 || true
+tccutil reset PostEvent com.moshbari.yaptextmac >/dev/null 2>&1 || true
+
 echo "   ✅ Installed to $INSTALL_LOCATION!"
 
 echo ""
@@ -170,4 +177,10 @@ read -p "🚀 Launch YapTextMac now? (y/n): " LAUNCH
 if [[ "$LAUNCH" == "y" || "$LAUNCH" == "Y" ]]; then
     open "$DEST"
     echo "   ✅ Launched! Look for the mic icon in your menu bar."
+    echo ""
+    echo "🔐 Auto-paste needs Accessibility permission. Each rebuild"
+    echo "   invalidates the previous grant, so I'll open System Settings"
+    echo "   for you — find YapTextMac in the list and toggle it ON."
+    sleep 1
+    open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
 fi
