@@ -116,11 +116,24 @@ fi
 echo "   ✅ Compilation successful!"
 
 # --------------------------------------------------
-# 6. Install to Desktop
+# 6. Install to /Applications (fallback to Desktop)
 # --------------------------------------------------
 echo "📦 Step 6/6: Installing..."
 
-DEST="$HOME/Desktop/YapTextMac.app"
+# Prefer /Applications, fall back to Desktop if not writable
+if [ -w "/Applications" ]; then
+    DEST="/Applications/YapTextMac.app"
+    INSTALL_LOCATION="/Applications"
+else
+    DEST="$HOME/Desktop/YapTextMac.app"
+    INSTALL_LOCATION="Desktop"
+    echo "   ℹ️  /Applications is not writable — installing to Desktop instead."
+fi
+
+# If the app is currently running, the binary is locked. Try to quit it first.
+osascript -e 'tell application "YapTextMac" to quit' 2>/dev/null || true
+sleep 1
+
 rm -rf "$DEST"
 cp -R "$BUILD_DIR/YapTextMac.app" "$DEST"
 
@@ -128,17 +141,18 @@ rm -rf "$BUILD_DIR"
 
 codesign --force --deep --sign - "$DEST" 2>/dev/null
 
-echo "   ✅ Installed to Desktop!"
+echo "   ✅ Installed to $INSTALL_LOCATION!"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║                  🎉 ALL DONE! 🎉                       ║"
 echo "╠══════════════════════════════════════════════════════════╣"
 echo "║                                                          ║"
-echo "║  YapTextMac.app is now on your Desktop!                  ║"
+echo "║  YapTextMac.app is installed!                            ║"
+echo "║  Location: $INSTALL_LOCATION"
 echo "║                                                          ║"
 echo "║  TO START:                                               ║"
-echo "║  1. Double-click YapTextMac.app on your Desktop          ║"
+echo "║  1. Open Finder → Applications → YapTextMac.app          ║"
 echo "║  2. Click the 🎙️ mic icon in your menu bar               ║"
 echo "║  3. Click the gear ⚙️ → paste your OpenAI + Sarvam keys  ║"
 echo "║  4. Dictate using one of the shortcuts:                  ║"
