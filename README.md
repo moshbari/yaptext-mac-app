@@ -28,7 +28,7 @@ cd yaptext-mac-app
 bash install.sh
 ```
 
-This builds the app and places `YapTextMac.app` on your Desktop. Requires Xcode installed (for the Swift compiler).
+This builds the app and installs it to `/Applications` (or falls back to your Desktop if `/Applications` is not writable). Requires Xcode installed (for the Swift compiler).
 
 ## Manual Install (Xcode)
 
@@ -77,6 +77,31 @@ This builds the app and places `YapTextMac.app` on your Desktop. Requires Xcode 
 | Accessibility | Type into other apps' text fields | Optional (falls back to clipboard) |
 
 Grant Accessibility: **System Settings → Privacy & Security → Accessibility → add YapTextMac**
+
+## Troubleshooting
+
+### Auto-paste stopped working after I reinstalled
+
+**This will happen every time you re-run `install.sh`.** The app is ad-hoc signed, which means each rebuild produces a slightly different binary identity. macOS keys Accessibility permission to that identity, so the previous "allowed" grant becomes invalid on every rebuild — the text still copies to your clipboard, but the auto-paste step silently falls back.
+
+**Fix (takes 5 seconds):**
+
+1. `install.sh` already clears the old grant automatically and opens **System Settings → Privacy & Security → Accessibility** for you when you launch.
+2. Find **YapTextMac** in that list and **toggle the switch ON**.
+3. That's it — auto-paste works again until your next rebuild.
+
+If the list doesn't show YapTextMac at all, open the YapTextMac menu bar popover and click the orange **"Grant AX"** button — that triggers the system prompt that adds it to the list.
+
+### How to confirm Accessibility is actually granted
+
+If you're not sure whether the toggle "stuck," run this in Terminal:
+
+```bash
+sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
+  "SELECT service, auth_value FROM access WHERE client = 'com.moshbari.yaptextmac';"
+```
+
+You should see `kTCCServiceAccessibility|...|2`. `2` means allowed; `0` means denied.
 
 ## Cost
 
