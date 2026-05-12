@@ -248,22 +248,18 @@ struct MainView: View {
             
             // Footer
             HStack {
-                Image(systemName: "command")
-                    .font(.caption2)
-                Image(systemName: "shift")
-                    .font(.caption2)
-                Text("D — Global hotkey")
+                Text("⌘⇧D / ⌘⇧E / ⌘⇧P — Global hotkeys")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                 Spacer()
                 
-                if transcriptionManager.checkAccessibilityPermission() {
+                if transcriptionManager.isAccessibilityTrusted() {
                     Label("AX", systemImage: "checkmark.circle.fill")
                         .font(.caption2)
                         .foregroundColor(.green)
                 } else {
                     Button(action: {
-                        _ = transcriptionManager.checkAccessibilityPermission()
+                        transcriptionManager.requestAccessibilityPermission()
                     }) {
                         Label("Grant AX", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption2)
@@ -392,9 +388,16 @@ struct MainView: View {
                         permissionRow(
                             icon: "accessibility",
                             label: "Accessibility (for text field insertion)",
-                            granted: transcriptionManager.checkAccessibilityPermission()
+                            granted: transcriptionManager.isAccessibilityTrusted()
                         )
-                        
+
+                        if !transcriptionManager.isAccessibilityTrusted() {
+                            Button("Grant Accessibility…") {
+                                transcriptionManager.requestAccessibilityPermission()
+                            }
+                            .font(.caption)
+                        }
+
                         Button("Open System Settings → Privacy") {
                             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy")!)
                         }

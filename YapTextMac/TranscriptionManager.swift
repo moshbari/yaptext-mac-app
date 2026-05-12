@@ -115,9 +115,23 @@ class TranscriptionManager: ObservableObject {
         }
     }
 
-    func checkAccessibilityPermission() -> Bool {
+    /// Silent check — call from view code freely; will NOT show a system prompt.
+    func isAccessibilityTrusted() -> Bool {
+        return AXIsProcessTrusted()
+    }
+
+    /// Triggers the macOS system prompt. Call ONLY from an explicit user action
+    /// (e.g. a "Grant Accessibility" button), never from a view render.
+    @discardableResult
+    func requestAccessibilityPermission() -> Bool {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
+    }
+
+    /// DEPRECATED — kept only so any external caller still compiles.
+    /// Returns the current trust state WITHOUT prompting.
+    func checkAccessibilityPermission() -> Bool {
+        return isAccessibilityTrusted()
     }
 
     // MARK: - Toggle Recording (mode-aware)
