@@ -97,6 +97,7 @@ swiftc \
     -parse-as-library \
     -O \
     "$SOURCE_DIR/TranscriptionManager.swift" \
+    "$SOURCE_DIR/SarvamService.swift" \
     "$SOURCE_DIR/PolishService.swift" \
     "$SOURCE_DIR/MainView.swift" \
     "$SOURCE_DIR/AppDelegate.swift" \
@@ -139,8 +140,11 @@ echo "║                                                          ║"
 echo "║  TO START:                                               ║"
 echo "║  1. Double-click YapTextMac.app on your Desktop          ║"
 echo "║  2. Click the 🎙️ mic icon in your menu bar               ║"
-echo "║  3. Click the gear ⚙️ → paste your OpenAI API key        ║"
-echo "║  4. Click Start or press ⌘⇧D to dictate!                ║"
+echo "║  3. Click the gear ⚙️ → paste your OpenAI + Sarvam keys  ║"
+echo "║  4. Dictate using one of the shortcuts:                  ║"
+echo "║     • ⌘⇧D = English  (OpenAI Whisper)                   ║"
+echo "║     • ⌘⇧E = Bengali  (Sarvam)                           ║"
+echo "║     • ⌘⇧P = Banglish (Sarvam translit)                  ║"
 echo "║                                                          ║"
 echo "║  FIRST TIME: macOS may say 'unidentified developer'.     ║"
 echo "║  Fix: Right-click the app → Open → click 'Open'          ║"

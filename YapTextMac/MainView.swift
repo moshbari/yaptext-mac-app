@@ -53,15 +53,49 @@ struct MainView: View {
     private var mainSection: some View {
         VStack(spacing: 14) {
             // API Key Warning
-            if transcriptionManager.apiKey.isEmpty {
+            if transcriptionManager.apiKey.isEmpty && transcriptionManager.sarvamApiKey.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
                         .font(.caption)
-                    Text("Set your OpenAI API key in")
+                    Text("Add your API keys in")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Button("Settings") { showSettings = true }
+                        .font(.caption)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.accentColor)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.orange.opacity(0.08))
+                .cornerRadius(6)
+            } else if transcriptionManager.apiKey.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                    Text("OpenAI key missing — ⌘⇧D won't work")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Button("Add") { showSettings = true }
+                        .font(.caption)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.accentColor)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.orange.opacity(0.08))
+                .cornerRadius(6)
+            } else if transcriptionManager.sarvamApiKey.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                    Text("Sarvam key missing — ⌘⇧E / ⌘⇧P won't work")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Button("Add") { showSettings = true }
                         .font(.caption)
                         .buttonStyle(.plain)
                         .foregroundColor(.accentColor)
@@ -282,7 +316,7 @@ struct MainView: View {
                 Divider()
                 
                 // API Key
-                GroupBox("OpenAI API Key") {
+                GroupBox("OpenAI API Key (for English / Polish)") {
                     VStack(alignment: .leading, spacing: 8) {
                         SecureField("sk-...", text: $transcriptionManager.apiKey)
                             .textFieldStyle(.roundedBorder)
@@ -306,6 +340,43 @@ struct MainView: View {
                                     .foregroundColor(.green)
                             }
                         }
+                    }
+                    .padding(6)
+                }
+
+                // Sarvam API Key — for Bengali (⌘⇧E) and Banglish (⌘⇧P)
+                GroupBox("Sarvam API Key (for Bengali / Banglish)") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        SecureField("sk_...", text: $transcriptionManager.sarvamApiKey)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.body, design: .monospaced))
+
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.caption2)
+                            Text("Stored securely in macOS Keychain")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.secondary)
+
+                        if !transcriptionManager.sarvamApiKey.isEmpty {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                    .font(.caption)
+                                Text("Key saved")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            }
+                        }
+
+                        HStack(spacing: 4) {
+                            Image(systemName: "info.circle")
+                                .font(.caption2)
+                            Text("Get a free key at sarvam.ai")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.secondary)
                     }
                     .padding(6)
                 }
@@ -376,7 +447,7 @@ struct MainView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "info.circle")
                                 .font(.caption2)
-                            Text("Tip: Click in your text field FIRST, then press ⌘⇧D to start.")
+                            Text("Tip: Click in your text field FIRST, then press the shortcut (⌘⇧D / ⌘⇧E / ⌘⇧P).")
                                 .font(.caption2)
                         }
                         .foregroundColor(.secondary)
@@ -387,12 +458,18 @@ struct MainView: View {
                 // How It Works
                 GroupBox("How It Works") {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("1. Press ⌘⇧D or click Start to record")
-                        Text("2. Speak — press ⌘⇧D again to stop")
-                        Text("3. Auto-stops after \(Int(transcriptionManager.silenceTimeoutSeconds))s of silence")
-                        Text("4. Whisper transcribes with auto-punctuation")
+                        Text("Three shortcuts — each picks the language:")
+                            .fontWeight(.medium)
+                        Text("• ⌘⇧D → English (OpenAI Whisper)")
+                        Text("• ⌘⇧E → Bengali script (Sarvam)")
+                        Text("• ⌘⇧P → Banglish / Romanized (Sarvam)")
+                        Divider()
+                        Text("1. Click in your text field")
+                        Text("2. Press the shortcut for the language you'll speak")
+                        Text("3. Speak — press the same shortcut again to stop")
+                        Text("4. Auto-stops after \(Int(transcriptionManager.silenceTimeoutSeconds))s of silence")
                         Text("5. Text auto-inserts into focused field + clipboard")
-                        Text("6. Optional: Pick a tone and tap ✨ to polish with AI")
+                        Text("6. Optional: Pick a tone and tap ✨ to polish with AI (English only)")
                     }
                     .font(.caption)
                     .padding(6)

@@ -6,7 +6,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var transcriptionManager: TranscriptionManager!
-    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyRefs: [EventHotKeyRef?] = []
     private var animationTimer: Timer?
     private var animationFrame: Int = 0
     private var toastWindow: NSWindow?
@@ -182,8 +182,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         container.addSubview(timerLabel)
         overlayTimerLabel = timerLabel
         
-        // Status label
-        let statusLabel = NSTextField(labelWithString: "Recording — press ⌘⇧D to stop")
+        // Status label — shows the mode-specific shortcut
+        let mode = transcriptionManager.currentMode
+        let statusLabel = NSTextField(labelWithString: "Recording \(mode.label) — press \(mode.shortcutLabel) to stop")
         statusLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
         statusLabel.textColor = NSColor.secondaryLabelColor
         statusLabel.frame = NSRect(x: 114, y: 12, width: 220, height: 20)
@@ -514,31 +515,75 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
-    // MARK: - Global Hotkey (⌘⇧D)
-    
+    // MARK: - Global Hotkeys
+    // ⌘⇧D (keyCode 2)  → id 1 → English (Whisper)
+    // ⌘⇧E (keyCode 14) → id 2 → Bengali (Sarvam transcribe)
+    // ⌘⇧P (keyCode 35) → id 3 → Banglish (Sarvam translit)
+
     func registerGlobalHotKey() {
-        var hotKeyID = EventHotKeyID()
-        hotKeyID.signature = OSType(0x5953_4352)
-        hotKeyID.id = 1
-        
+        let signature: OSType = OSType(0x5953_4352)  // 'YSCR'
         let modifiers: UInt32 = UInt32(cmdKey | shiftKey)
-        let keyCode: UInt32 = 2
-        
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        
+
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+
+        // Install one handler that reads which hotkey fired from the event payload.
         InstallEventHandler(
             GetApplicationEventTarget(),
             { (_, event, userData) -> OSStatus in
-                guard let userData = userData else { return noErr }
+                guard let userData = userData, let event = event else { return noErr }
                 let ad = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
-                ad.handleHotKey()
+
+                var firedHotKeyID = EventHotKeyID()
+                let err = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &firedHotKeyID
+                )
+                guard err == noErr else { return err }
+
+                let mode: TranscriptionManager.TranscriptionMode
+                switch firedHotKeyID.id {
+                case 1: mode = .english
+                case 2: mode = .bengali
+                case 3: mode = .banglish
+                default: return noErr
+                }
+                ad.handleHotKey(mode: mode)
                 return noErr
-            }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), nil
+            },
+            1, &eventType,
+            Unmanaged.passUnretained(self).toOpaque(),
+            nil
         )
-        RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+
+        // Register the three shortcuts.
+        let registrations: [(id: UInt32, keyCode: UInt32)] = [
+            (1, 2),   // D → English
+            (2, 14),  // E → Bengali
+            (3, 35)   // P → Banglish
+        ]
+
+        hotKeyRefs.removeAll()
+        for reg in registrations {
+            var ref: EventHotKeyRef?
+            var hkID = EventHotKeyID()
+            hkID.signature = signature
+            hkID.id = reg.id
+            RegisterEventHotKey(reg.keyCode, modifiers, hkID, GetApplicationEventTarget(), 0, &ref)
+            hotKeyRefs.append(ref)
+        }
     }
-    
-    func handleHotKey() {
-        DispatchQueue.main.async { [weak self] in self?.transcriptionManager.toggleRecording() }
+
+    func handleHotKey(mode: TranscriptionManager.TranscriptionMode) {
+        DispatchQueue.main.async { [weak self] in
+            self?.transcriptionManager.toggleRecording(mode: mode)
+        }
     }
 }

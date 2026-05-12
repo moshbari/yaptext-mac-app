@@ -1,21 +1,23 @@
 # 🎙️ YapTextMac
 
-A native macOS menu bar app that transcribes your voice using **OpenAI Whisper API** and automatically types it into the active text field — or copies it to your clipboard.
+A native macOS menu bar app that transcribes your voice into text — in **English, Bengali, or Banglish (Romanized Bangla)** — using OpenAI Whisper + Sarvam AI, and automatically types it into the active text field.
 
 ![macOS](https://img.shields.io/badge/macOS-13.0+-blue) ![Swift](https://img.shields.io/badge/Swift-5.9+-orange) ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Features
 
-- **OpenAI Whisper API** — Superior transcription accuracy with **auto-punctuation** (commas, periods, question marks, capitalization)
-- **AI Polish with 11 Tones** — Optionally clean up transcribed text in the tone you want: Fix Only, Friendly Pro, Executive, Supportive, Creator, Academic, Simple, Concise, Elaborate, Email, Message
+- **Three Languages, Three Shortcuts** — No language auto-detection. You pick the language by choosing the shortcut:
+  - `⌘⇧D` → **English** (OpenAI Whisper, with auto-punctuation)
+  - `⌘⇧E` → **Bengali** script (Sarvam `saaras:v3` transcribe)
+  - `⌘⇧P` → **Banglish** / Romanized Bangla (Sarvam `saaras:v3` translit)
+- **AI Polish with 11 Tones** — Optionally clean up transcribed English text in the tone you want: Fix Only, Friendly Pro, Executive, Supportive, Creator, Academic, Simple, Concise, Elaborate, Email, Message
 - **Menu Bar App** — Lives in your menu bar, always accessible
-- **Global Hotkey** — `⌘⇧D` to start/stop recording from anywhere
 - **Smart Text Insertion** — Auto-detects focused text fields:
   - Text field focused → types directly into it
   - No text field → copies to clipboard
 - **Visual Feedback** — Menu bar icon animates red while recording, orange while transcribing, and shows a toast notification when done
 - **Auto-Stop** — Stops recording after configurable silence (default 3s)
-- **Secure API Key** — Stored in macOS Keychain
+- **Secure API Keys** — OpenAI and Sarvam keys both stored in macOS Keychain
 - **Lightweight** — No Dock icon, minimal resource usage (~30MB RAM)
 
 ## Quick Install (Terminal)
@@ -43,8 +45,10 @@ This builds the app and places `YapTextMac.app` on your Desktop. Requires Xcode 
 
 | Action | How |
 |--------|-----|
-| Start/Stop recording | `⌘⇧D` globally, or click mic icon → Start |
-| Configure API key | Click mic icon → gear ⚙️ → paste key |
+| Dictate English | `⌘⇧D` globally |
+| Dictate Bengali (Bengali script) | `⌘⇧E` globally |
+| Dictate Banglish (Romanized) | `⌘⇧P` globally |
+| Configure API keys | Click mic icon → gear ⚙️ → paste OpenAI + Sarvam keys |
 | Auto-type into text box | Click into any text field first, then dictate |
 | Copy to clipboard | Dictate without focusing a text field |
 | Quit | Click mic icon → ✕ button |

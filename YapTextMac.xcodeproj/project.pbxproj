@@ -12,6 +12,7 @@
 		A10003 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10003; };
 		A10004 /* YapTextMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10004; };
 		A10007 /* PolishService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10007; };
+		A10008 /* SarvamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10008; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +23,7 @@
 		B10005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B10006 /* YapTextMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = YapTextMac.entitlements; sourceTree = "<group>"; };
 		B10007 /* PolishService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishService.swift; sourceTree = "<group>"; };
+		B10008 /* SarvamService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SarvamService.swift; sourceTree = "<group>"; };
 		C10001 /* YapTextMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YapTextMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -51,6 +53,7 @@
 				B10001 /* AppDelegate.swift */,
 				B10002 /* TranscriptionManager.swift */,
 				B10007 /* PolishService.swift */,
+				B10008 /* SarvamService.swift */,
 				B10003 /* MainView.swift */,
 				B10005 /* Info.plist */,
 				B10006 /* YapTextMac.entitlements */,
@@ -138,6 +141,8 @@
 				A10002 /* TranscriptionManager.swift in Sources */,
 				A10003 /* MainView.swift in Sources */,
 				A10004 /* YapTextMacApp.swift in Sources */,
+				A10007 /* PolishService.swift in Sources */,
+				A10008 /* SarvamService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
