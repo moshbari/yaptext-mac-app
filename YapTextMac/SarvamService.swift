@@ -86,10 +86,11 @@ class SarvamService {
         appendField("language_code", "bn-IN")
         appendField("mode", mode.apiMode)
 
-        // File part
+        // File part — use audio/mp4 (IANA-standard MIME for M4A/MP4-AAC).
+        // Sarvam's whitelist accepts audio/mp4 but rejects audio/m4a.
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: audio/m4a\r\n\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.mp4\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: audio/mp4\r\n\r\n".data(using: .utf8)!)
         body.append(audioData)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
