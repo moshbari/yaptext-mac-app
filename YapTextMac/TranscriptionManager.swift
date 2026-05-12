@@ -169,10 +169,8 @@ class TranscriptionManager: ObservableObject {
         let frontmost = NSWorkspace.shared.frontmostApplication
         if let app = frontmost, app.bundleIdentifier != Bundle.main.bundleIdentifier {
             targetApp = app
-            NSLog("[YapText] startRecording: captured targetApp=\(app.localizedName ?? "?") bundleID=\(app.bundleIdentifier ?? "?")")
         } else {
             targetApp = nil
-            NSLog("[YapText] startRecording: NO targetApp captured (frontmost=\(frontmost?.localizedName ?? "nil") bundleID=\(frontmost?.bundleIdentifier ?? "nil") selfBundleID=\(Bundle.main.bundleIdentifier ?? "nil"))")
         }
 
         transcribedText = ""
@@ -349,11 +347,8 @@ class TranscriptionManager: ObservableObject {
         // Always copy to clipboard first
         copyToClipboard(text)
 
-        NSLog("[YapText] finishTranscription: autoPasteEnabled=\(autoPasteEnabled) axTrusted=\(AXIsProcessTrusted()) targetApp=\(targetApp?.localizedName ?? "nil") terminated=\(targetApp?.isTerminated ?? false)")
-
         // If auto-paste is OFF → just clipboard
         guard autoPasteEnabled else {
-            NSLog("[YapText] finishTranscription: clipboard-only (autoPasteEnabled=false)")
             lastAction = "📋 Copied — paste with ⌘V"
             statusMessage = "Done (\(currentMode.label)) — Copied to clipboard"
             return
@@ -361,7 +356,6 @@ class TranscriptionManager: ObservableObject {
 
         // Need Accessibility permission to simulate keystrokes
         guard AXIsProcessTrusted() else {
-            NSLog("[YapText] finishTranscription: clipboard-only (AXIsProcessTrusted=false — Accessibility not granted to THIS binary)")
             lastAction = "📋 Copied — Grant Accessibility for auto-paste"
             statusMessage = "Done — Copied to clipboard"
             return
@@ -369,20 +363,17 @@ class TranscriptionManager: ObservableObject {
 
         // Need a target app that isn't YapTextMac, and still running
         guard let target = targetApp, !target.isTerminated else {
-            NSLog("[YapText] finishTranscription: clipboard-only (targetApp=nil or terminated)")
             lastAction = "📋 Copied — Use shortcut from your text field next time"
             statusMessage = "Done — Copied to clipboard"
             return
         }
 
         // Activate the target app, then paste
-        let activated = target.activate(options: .activateIgnoringOtherApps)
+        target.activate(options: .activateIgnoringOtherApps)
         let appName = target.localizedName ?? "app"
-        NSLog("[YapText] finishTranscription: activated=\(activated) target=\(appName)")
         statusMessage = "⌘V → \(appName)..."
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
-            NSLog("[YapText] finishTranscription: posting ⌘V to \(appName) (frontmost now=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"))")
             self?.simulateCmdV()
             self?.lastAction = "✅ Auto-pasted into \(appName)"
             self?.statusMessage = "Done (\(self?.currentMode.label ?? "")) — Auto-pasted into \(appName)"

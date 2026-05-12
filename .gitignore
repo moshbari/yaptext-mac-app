@@ -20,3 +20,6 @@ Icon?
 # Misc
 *.swp
 *.lock
+
+# Claude Code per-user settings
+.claude/settings.local.json
