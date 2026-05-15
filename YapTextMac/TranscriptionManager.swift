@@ -59,6 +59,11 @@ class TranscriptionManager: ObservableObject {
     // Target app for auto-paste — captured at recording start
     private var targetApp: NSRunningApplication?
 
+    /// ID of the most-recently-saved history entry. PolishService updates this
+    /// when the user polishes the latest dictation, so history reflects the
+    /// final polished version rather than the raw transcript.
+    var lastHistoryEntryID: UUID?
+
     let objectWillChange = ObservableObjectPublisher()
 
     static let silenceOptions: [(label: String, value: Double)] = [
@@ -343,6 +348,12 @@ class TranscriptionManager: ObservableObject {
             statusMessage = "Ready — ⌘⇧D (EN), ⌘⇧E (BN), ⌘⇧P (Banglish)"
             return
         }
+
+        // Persist to history (the polished version, if any, will overwrite this entry's text)
+        lastHistoryEntryID = HistoryManager.shared.save(
+            text: text,
+            language: HistoryManager.languageTag(forMode: currentMode)
+        )
 
         // Always copy to clipboard first
         copyToClipboard(text)

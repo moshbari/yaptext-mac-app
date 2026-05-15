@@ -99,6 +99,8 @@ swiftc \
     "$SOURCE_DIR/TranscriptionManager.swift" \
     "$SOURCE_DIR/SarvamService.swift" \
     "$SOURCE_DIR/PolishService.swift" \
+    "$SOURCE_DIR/HistoryManager.swift" \
+    "$SOURCE_DIR/HistoryWindow.swift" \
     "$SOURCE_DIR/MainView.swift" \
     "$SOURCE_DIR/AppDelegate.swift" \
     "$SOURCE_DIR/YapTextMacApp.swift" \

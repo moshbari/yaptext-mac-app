@@ -27,6 +27,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         transcriptionManager = TranscriptionManager()
+
+        // Eagerly construct shared singletons so history loads on launch
+        // and the archive window is ready when the user taps "View All →".
+        _ = HistoryManager.shared
+        _ = HistoryWindowController.shared
         
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {

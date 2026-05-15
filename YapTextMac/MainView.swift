@@ -2,10 +2,13 @@ import SwiftUI
 
 struct MainView: View {
     @ObservedObject var transcriptionManager: TranscriptionManager
+    @ObservedObject private var history = HistoryManager.shared
     @StateObject private var polishService = PolishService()
     @State private var showSettings = false
+    @State private var showHistory = false
     @State private var selectedTone: PolishService.Tone = .fixOnly
     @State private var showPolishedSection = false
+    @State private var copiedHistoryID: UUID? = nil
     
     var body: some View {
         VStack(spacing: 16) {
@@ -24,22 +27,37 @@ struct MainView: View {
                     .background(Color.secondary.opacity(0.15))
                     .cornerRadius(4)
                 Spacer()
-                Button(action: { showSettings.toggle() }) {
+                Button(action: {
+                    showHistory.toggle()
+                    if showHistory { showSettings = false }
+                }) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundColor(showHistory ? .accentColor : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help("History")
+
+                Button(action: {
+                    showSettings.toggle()
+                    if showSettings { showHistory = false }
+                }) {
                     Image(systemName: "gearshape.fill")
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
                 .help("Settings")
-                
+
                 Button(action: { NSApp.terminate(nil) }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
             }
-            
+
             if showSettings {
                 settingsSection
+            } else if showHistory {
+                historySection
             } else {
                 mainSection
             }
@@ -290,6 +308,9 @@ struct MainView: View {
                 NSPasteboard.general.setString(polishService.polishedText, forType: .string)
                 transcriptionManager.lastAction = "✨ Polished — copied to clipboard, paste with ⌘V"
                 showPolishedSection = true
+                if let id = transcriptionManager.lastHistoryEntryID {
+                    HistoryManager.shared.updateText(id: id, newText: polishService.polishedText)
+                }
             } else if polishService.isPolishing {
                 observePolishCompletion()
             }
@@ -529,6 +550,127 @@ struct MainView: View {
                 .foregroundColor(granted ? .green : .red)
                 .font(.caption)
         }
+    }
+
+    // MARK: - History Section (last 7)
+
+    private var historySection: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text("Recent Dictations")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(history.entries.count) total")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            Divider()
+
+            if history.entries.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 24))
+                        .foregroundColor(.secondary)
+                    Text("No dictations yet.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text("Press ⌘⇧D / ⌘⇧E / ⌘⇧P to start.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 180)
+            } else {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(history.recent(7)) { entry in
+                            historyRow(entry)
+                        }
+                    }
+                }
+                .frame(height: 280)
+            }
+
+            Divider()
+
+            Button(action: openFullHistory) {
+                HStack {
+                    Spacer()
+                    Text("View All →")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    Spacer()
+                }
+                .padding(.vertical, 6)
+                .background(Color.accentColor.opacity(0.12))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.accentColor)
+        }
+    }
+
+    private func historyRow(_ entry: DictationEntry) -> some View {
+        Button(action: { copyHistoryEntry(entry) }) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(HistoryManager.formatRelative(entry.timestamp))
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.primary)
+                    Text(entry.language)
+                        .font(.caption2.weight(.bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(historyBadgeColor(entry.language))
+                        .cornerRadius(3)
+                    Spacer()
+                    if copiedHistoryID == entry.id {
+                        Text("Copied!")
+                            .font(.caption2)
+                            .foregroundColor(.green)
+                    }
+                }
+                Text(HistoryManager.formatExact(entry.timestamp))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Text(entry.text.prefix(60) + (entry.text.count > 60 ? "…" : ""))
+                    .font(.caption2)
+                    .foregroundColor(.primary.opacity(0.85))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(8)
+            .background(Color.secondary.opacity(0.08))
+            .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func historyBadgeColor(_ lang: String) -> Color {
+        switch lang {
+        case "EN": return .blue
+        case "BN": return .purple
+        case "BL": return .orange
+        default:   return .gray
+        }
+    }
+
+    private func copyHistoryEntry(_ entry: DictationEntry) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(entry.text, forType: .string)
+        withAnimation { copiedHistoryID = entry.id }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            if copiedHistoryID == entry.id {
+                withAnimation { copiedHistoryID = nil }
+            }
+        }
+    }
+
+    private func openFullHistory() {
+        HistoryWindowController.shared.show()
     }
 }
 
