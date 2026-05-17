@@ -77,6 +77,11 @@ echo "📋 Step 4/6: Creating app bundle..."
 
 cp "$SOURCE_DIR/Info.plist" "$BUILD_DIR/YapTextMac.app/Contents/Info.plist"
 
+# App icon — Info.plist references AppIcon.icns in Resources/
+if [ -f "$SOURCE_DIR/AppIcon.icns" ]; then
+    cp "$SOURCE_DIR/AppIcon.icns" "$BUILD_DIR/YapTextMac.app/Contents/Resources/AppIcon.icns"
+fi
+
 echo "   ✅ App bundle created!"
 
 # --------------------------------------------------
