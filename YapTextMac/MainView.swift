@@ -332,13 +332,14 @@ struct MainView: View {
             VStack(spacing: 14) {
                 Divider()
                 
-                // API Key
-                GroupBox("OpenAI API Key (for English / Polish)") {
+                // OpenAI API Key — now only used by the Polish feature.
+                // English transcription routes through the YapText server.
+                GroupBox("OpenAI API Key (for Polish only)") {
                     VStack(alignment: .leading, spacing: 8) {
                         SecureField("sk-...", text: $transcriptionManager.apiKey)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(.body, design: .monospaced))
-                        
+
                         HStack(spacing: 4) {
                             Image(systemName: "lock.fill")
                                 .font(.caption2)
@@ -346,7 +347,15 @@ struct MainView: View {
                                 .font(.caption2)
                         }
                         .foregroundColor(.secondary)
-                        
+
+                        HStack(spacing: 4) {
+                            Image(systemName: "info.circle")
+                                .font(.caption2)
+                            Text("English / Bengali / Banglish transcription is now handled by the YapText server — no key needed for those.")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.secondary)
+
                         if !transcriptionManager.apiKey.isEmpty {
                             HStack {
                                 Image(systemName: "checkmark.circle.fill")
@@ -361,36 +370,22 @@ struct MainView: View {
                     .padding(6)
                 }
 
-                // Sarvam API Key — for Bengali (⌘⇧E) and Banglish (⌘⇧P)
-                GroupBox("Sarvam API Key (for Bengali / Banglish)") {
+                // Sarvam key is now handled server-side. Field intentionally
+                // disabled (not removed) so we can re-enable if we ever
+                // revert to BYOK without losing the keychain entry.
+                GroupBox("Sarvam API Key (no longer needed)") {
                     VStack(alignment: .leading, spacing: 8) {
                         SecureField("sk_...", text: $transcriptionManager.sarvamApiKey)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(.body, design: .monospaced))
+                            .disabled(true)
+                            .opacity(0.5)
 
                         HStack(spacing: 4) {
-                            Image(systemName: "lock.fill")
+                            Image(systemName: "checkmark.seal.fill")
                                 .font(.caption2)
-                            Text("Stored securely in macOS Keychain")
-                                .font(.caption2)
-                        }
-                        .foregroundColor(.secondary)
-
-                        if !transcriptionManager.sarvamApiKey.isEmpty {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                    .font(.caption)
-                                Text("Key saved")
-                                    .font(.caption)
-                                    .foregroundColor(.green)
-                            }
-                        }
-
-                        HStack(spacing: 4) {
-                            Image(systemName: "info.circle")
-                                .font(.caption2)
-                            Text("Get a free key at sarvam.ai")
+                                .foregroundColor(.green)
+                            Text("Bengali / Banglish is now handled by the YapText server — your Sarvam key is no longer required.")
                                 .font(.caption2)
                         }
                         .foregroundColor(.secondary)

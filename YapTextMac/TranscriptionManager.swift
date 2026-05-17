@@ -258,7 +258,13 @@ class TranscriptionManager: ObservableObject {
     // MARK: - English pipeline (OpenAI Whisper)
 
     private func sendToWhisper(fileURL: URL) {
-        guard !apiKey.isEmpty else { statusMessage = "⚠️ No OpenAI API key configured"; return }
+        // English transcription is now routed through the YapText server on
+        // Railway (same backend the iOS app uses). The server holds the
+        // OpenAI key and handles long-audio chunking/punctuation. The user's
+        // OpenAI key in Settings is no longer needed for transcription —
+        // it's kept only for the Polish feature, which still calls OpenAI
+        // directly to preserve Mac-specific tones the server doesn't know.
+
         guard FileManager.default.fileExists(atPath: fileURL.path),
               let audioData = try? Data(contentsOf: fileURL) else {
             statusMessage = "⚠️ Could not read audio file"; return
@@ -268,26 +274,27 @@ class TranscriptionManager: ObservableObject {
             cleanup(fileURL: fileURL); return
         }
 
-        let boundary = UUID().uuidString
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/audio/transcriptions")!)
+        // YapText API (Railway) — same constants used by SarvamService.
+        let apiBaseURL = "https://yaptext-api-production.up.railway.app"
+        let appSecret = "6cf0dbc29b678a29f462c945b1f09c15fc02ae03d07d626071912fc1c09e7e61"
+
+        let boundary = "yaptext-\(UUID().uuidString)"
+        var request = URLRequest(url: URL(string: "\(apiBaseURL)/transcribe")!)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(appSecret, forHTTPHeaderField: "X-App-Secret")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 30
+        request.timeoutInterval = 300
 
         var body = Data()
-        func appendField(_ name: String, _ value: String) {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(value)\r\n".data(using: .utf8)!)
-        }
-        appendField("model", "whisper-1")
-        appendField("language", "en")
-        appendField("response_format", "text")
-        appendField("prompt", "Hello, welcome to the meeting. How are you doing today? I'm doing great, thanks for asking. Let's discuss the project. We need to finalize the design, review the budget, and schedule the next call.")
 
+        // language field
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n".data(using: .utf8)!)
+        body.append("english\r\n".data(using: .utf8)!)
+
+        // audio file field
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"audio\"; filename=\"audio.m4a\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: audio/m4a\r\n\r\n".data(using: .utf8)!)
         body.append(audioData)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
@@ -303,17 +310,25 @@ class TranscriptionManager: ObservableObject {
                     self?.statusMessage = "⚠️ Invalid response"; return
                 }
                 if http.statusCode == 200 {
-                    if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let text = (json["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !text.isEmpty {
                         self?.transcribedText = text
                         self?.finishTranscription()
-                    } else { self?.statusMessage = "No speech detected. Try again." }
+                    } else {
+                        self?.statusMessage = "No speech detected. Try again."
+                    }
                 } else if http.statusCode == 401 {
-                    self?.statusMessage = "⚠️ Invalid OpenAI API key. Check settings."
+                    self?.statusMessage = "⚠️ App auth failed. Update YapText to the latest version."
                 } else if http.statusCode == 429 {
-                    self?.statusMessage = "⚠️ Rate limited. Wait and try again."
+                    self?.statusMessage = "⚠️ Server busy. Wait and try again."
                 } else {
-                    let e = String(data: data, encoding: .utf8) ?? "Unknown"
-                    self?.statusMessage = "⚠️ API error (\(http.statusCode)): \(String(e.prefix(100)))"
+                    var msg = "Server error (\(http.statusCode))"
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let err = json["error"] as? String {
+                        msg = err
+                    }
+                    self?.statusMessage = "⚠️ \(String(msg.prefix(120)))"
                 }
             }
         }.resume()
