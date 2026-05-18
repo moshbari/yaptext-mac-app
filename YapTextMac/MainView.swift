@@ -3,12 +3,14 @@ import SwiftUI
 struct MainView: View {
     @ObservedObject var transcriptionManager: TranscriptionManager
     @ObservedObject private var history = HistoryManager.shared
+    @ObservedObject private var pending = PendingRecordingsManager.shared
     @StateObject private var polishService = PolishService()
     @State private var showSettings = false
     @State private var showHistory = false
     @State private var selectedTone: PolishService.Tone = .fixOnly
     @State private var showPolishedSection = false
     @State private var copiedHistoryID: UUID? = nil
+    @State private var pendingToDelete: PendingRecording? = nil
     
     var body: some View {
         VStack(spacing: 16) {
@@ -70,6 +72,13 @@ struct MainView: View {
     
     private var mainSection: some View {
         VStack(spacing: 14) {
+            // Accessibility banner — the #1 reason auto-paste fails. Shown
+            // big and red the moment AX isn't granted, with one-tap actions
+            // that open the Settings pane AND fire the system request prompt.
+            if !transcriptionManager.isAccessibilityTrusted() {
+                axDeniedBanner
+            }
+
             // API Key Warning
             if transcriptionManager.apiKey.isEmpty && transcriptionManager.sarvamApiKey.isEmpty {
                 HStack(spacing: 6) {
@@ -124,8 +133,16 @@ struct MainView: View {
                 .cornerRadius(6)
             }
             
+            // Pending recordings — surfaced whenever a recording is still
+            // awaiting transcription (server busy, network blip, app quit
+            // mid-transcribe). Audio is on disk until the user retries
+            // successfully or deletes the row.
+            if !pending.entries.isEmpty {
+                pendingSection
+            }
+
             Divider()
-            
+
             // Status
             HStack {
                 Circle()
@@ -275,6 +292,18 @@ struct MainView: View {
                     Label("AX", systemImage: "checkmark.circle.fill")
                         .font(.caption2)
                         .foregroundColor(.green)
+
+                    // macOS sometimes caches AX trust per-process. If the grant was
+                    // toggled WHILE the app was running, the cached state may stay
+                    // "denied" until the app restarts — auto-paste silently falls
+                    // back to clipboard-only. This button is the safety valve.
+                    Button(action: relaunchApp) {
+                        Image(systemName: "arrow.clockwise.circle")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Quit & relaunch — fixes auto-paste if it stopped working after granting AX")
                 } else {
                     Button(action: {
                         transcriptionManager.requestAccessibilityPermission()
@@ -547,6 +576,156 @@ struct MainView: View {
         }
     }
 
+    // MARK: - Accessibility Denied Banner
+
+    private var axDeniedBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.white)
+                Text("Auto-paste is OFF")
+                    .font(.system(.body, design: .rounded).weight(.bold))
+                    .foregroundColor(.white)
+                Spacer()
+            }
+            Text("macOS needs Accessibility permission to type your transcription into the focused text field. Without it, transcripts only land on the clipboard (paste with ⌘V).")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.95))
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button(action: grantAXNow) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.open.fill")
+                        Text("Grant Accessibility")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white)
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: openAXPane) {
+                    Text("Open Settings")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.white.opacity(0.2))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.red)
+        .cornerRadius(8)
+    }
+
+    /// One-tap recovery: fire the system AX request prompt AND open the
+    /// pane simultaneously. The prompt adds YapTextMac to the list with
+    /// a toggle; the pane gives the user one click to flip it ON.
+    private func grantAXNow() {
+        transcriptionManager.requestAccessibilityPermission()
+        openAXPane()
+    }
+
+    private func openAXPane() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    // MARK: - Pending Recordings Section
+
+    private var pendingSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "tray.full.fill")
+                    .foregroundColor(.orange)
+                    .font(.caption)
+                Text("Awaiting transcription (\(pending.entries.count))")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+
+            VStack(spacing: 4) {
+                ForEach(pending.entries) { entry in
+                    pendingRow(entry)
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.orange.opacity(0.08))
+        .cornerRadius(6)
+        .alert("Delete this recording?", isPresented: Binding(
+            get: { pendingToDelete != nil },
+            set: { if !$0 { pendingToDelete = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { pendingToDelete = nil }
+            Button("Delete", role: .destructive) {
+                if let entry = pendingToDelete {
+                    PendingRecordingsManager.shared.remove(id: entry.id)
+                }
+                pendingToDelete = nil
+            }
+        } message: {
+            Text("The saved audio for this dictation will be discarded.")
+        }
+    }
+
+    private func pendingRow(_ entry: PendingRecording) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(entry.languageTag)
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(historyBadgeColor(entry.languageTag))
+                    .cornerRadius(3)
+                Text(HistoryManager.formatRelative(entry.timestamp))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Spacer()
+                if entry.isRetrying {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .frame(width: 14, height: 14)
+                } else {
+                    Button(action: { transcriptionManager.retryPending(id: entry.id) }) {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundColor(.accentColor)
+                    .help("Try transcription again")
+                }
+                Button(action: { pendingToDelete = entry }) {
+                    Image(systemName: "trash")
+                        .font(.caption2)
+                        .foregroundColor(.red)
+                }
+                .buttonStyle(.borderless)
+                .help("Delete recording")
+            }
+            if let err = entry.lastError, !err.isEmpty {
+                Text("⚠️ \(err)" + (entry.retryCount > 1 ? " (\(entry.retryCount) tries)" : ""))
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(Color.white.opacity(0.4))
+        .cornerRadius(4)
+    }
+
     // MARK: - History Section (last 7)
 
     private var historySection: some View {
@@ -666,6 +845,20 @@ struct MainView: View {
 
     private func openFullHistory() {
         HistoryWindowController.shared.show()
+    }
+
+    // Spawn /usr/bin/open with the app path so the relaunched copy starts
+    // fresh, then terminate ourselves. Necessary when AX was granted while
+    // the app was running and the cached trust state needs to refresh.
+    private func relaunchApp() {
+        guard let bundlePath = Bundle.main.bundlePath as String? else { return }
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = ["-n", bundlePath]
+        try? task.run()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            NSApp.terminate(nil)
+        }
     }
 }
 

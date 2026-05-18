@@ -15,6 +15,7 @@
 		A10008 /* SarvamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10008; };
 		A10009 /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10009; };
 		A10010 /* HistoryWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10010; };
+		A10011 /* PendingRecordingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10011; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 		B10008 /* SarvamService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SarvamService.swift; sourceTree = "<group>"; };
 		B10009 /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
 		B10010 /* HistoryWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryWindow.swift; sourceTree = "<group>"; };
+		B10011 /* PendingRecordingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingsManager.swift; sourceTree = "<group>"; };
 		C10001 /* YapTextMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YapTextMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -60,6 +62,7 @@
 				B10008 /* SarvamService.swift */,
 				B10009 /* HistoryManager.swift */,
 				B10010 /* HistoryWindow.swift */,
+				B10011 /* PendingRecordingsManager.swift */,
 				B10003 /* MainView.swift */,
 				B10005 /* Info.plist */,
 				B10006 /* YapTextMac.entitlements */,
@@ -151,6 +154,7 @@
 				A10008 /* SarvamService.swift in Sources */,
 				A10009 /* HistoryManager.swift in Sources */,
 				A10010 /* HistoryWindow.swift in Sources */,
+				A10011 /* PendingRecordingsManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

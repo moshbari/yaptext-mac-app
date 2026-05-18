@@ -9,26 +9,33 @@ Read this before touching this repo. It encodes hard-won lessons that bite every
 **The single most important thing about this app.** Read carefully.
 
 ### What happens
-`install.sh` ad-hoc signs the build (`codesign --force --deep --sign -`). Every rebuild produces a slightly different binary identity, and macOS keys Accessibility permission to that exact identity. As a result, **every install invalidates the previous Accessibility grant** — even if `install.sh` didn't also call `tccutil reset` (which it does, intentionally, to give a clean slate).
+`install.sh` ad-hoc signs the build (`codesign --force --deep --sign -`). Every rebuild produces a new cdhash, and macOS keys Accessibility permission to that exact cdhash. As a result, **every install invalidates the previous Accessibility grant** — install.sh also calls `tccutil reset` explicitly to give a clean slate.
 
-The user-visible symptom: transcription works, text is copied to clipboard, but **auto-paste silently does nothing**. The app falls back to clipboard-only mode without saying so loudly.
+User-visible symptom: transcription works, text is copied to clipboard, but **auto-paste silently does nothing**. The app falls back to clipboard-only mode.
+
+### ❌ Do NOT propose the self-signed-cert workaround again
+A previous session implemented a stable self-signed cert in a custom keychain to keep the DR (and therefore the AX grant) stable across rebuilds. Mechanically the DR was stable (verified — CDHash changed, DR didn't), but **macOS TCC silently rejected AX grants for the cert-signed binary**: toggling YapTextMac ON in System Settings recorded the row, but `AXIsProcessTrusted()` kept returning `false`. Hours were burned. **If you ever consider this path again, you MUST also add the cert to the system trust store (`security add-trusted-cert` with admin escalation) AND verify TCC actually accepts the grant via the debug log before claiming victory.** Without the trust-store step, the cert breaks AX entirely.
+
+The real root-cause fix is an Apple Developer ID ($99/yr) — until then, manual re-grant is unavoidable.
 
 ### The standing rule
-Any task that ends with `install.sh` being run — directly or indirectly — must do all of the following:
+Any task that ends with `install.sh` being run — directly or indirectly — must:
 
-1. **Call out the AX re-grant in the post-install report, prominently at the top, in bold or with a warning emoji.** Do not bury it under "what's done." This is the #1 thing the user needs to act on.
-2. **Verify the current TCC state** before declaring auto-paste "working":
+1. **Call out the AX re-grant in the post-install report, prominently at the top, in bold or with ⚠️.** Don't bury it.
+2. **The app itself now has a big red "Auto-paste is OFF" banner** at the top of the popover when AX is denied, with a one-tap "Grant Accessibility" button (fires `requestAccessibilityPermission()` AND opens the AX pane). Tell the user about that button by name — it's the friendliest recovery path.
+3. **Verify the current TCC state when in doubt:**
    ```bash
    sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db" \
      "SELECT service, client, auth_value FROM access \
       WHERE client = 'com.moshbari.yaptextmac' AND service = 'kTCCServiceAccessibility';"
    ```
-   `auth_value = 2` → granted. No row or `auth_value = 0` → not granted.
-3. **Never claim "auto-paste is working" without that verification.** If AX isn't granted, say explicitly: "Auto-paste will fall back to clipboard until you toggle YapTextMac ON in System Settings → Privacy & Security → Accessibility."
-4. **Tell the user the System Settings pane is already open** (install.sh opens it for them at the end).
+   Note: AX rows live in `/Library/Application Support/com.apple.TCC/TCC.db` (system db, sudo needed), NOT the user db. The user db only holds Microphone/Camera. Don't conclude "AX is not granted" from the user db being empty for that service.
+4. **Never claim "auto-paste is working" without that verification — or without the user doing a real test dictation.**
+5. **Tell the user the System Settings pane is already open** (install.sh opens it at the end).
+6. **Tell the user to remove any stale `YapTextMac` entry** in the AX list before adding the new one (old entries point to the previous cdhash and won't apply).
 
 ### Why it can't be auto-fixed
-Granting Accessibility requires user consent through System Settings. macOS does not allow programmatic grants without Full Disk Access + direct sqlite manipulation of `TCC.db`, which is fragile and not advisable. The true root-cause fix is a stable Developer ID signing certificate (Apple Developer Program, $99/yr) — until that's in place, the manual re-grant is unavoidable.
+Granting Accessibility requires user consent through System Settings. macOS does not allow programmatic grants without Full Disk Access + direct sqlite manipulation of `TCC.db`, which is fragile and not advisable. An Apple Developer ID would solve this; until then, manual re-grant is the path.
 
 ---
 

@@ -106,6 +106,7 @@ swiftc \
     "$SOURCE_DIR/PolishService.swift" \
     "$SOURCE_DIR/HistoryManager.swift" \
     "$SOURCE_DIR/HistoryWindow.swift" \
+    "$SOURCE_DIR/PendingRecordingsManager.swift" \
     "$SOURCE_DIR/MainView.swift" \
     "$SOURCE_DIR/AppDelegate.swift" \
     "$SOURCE_DIR/YapTextMacApp.swift" \
@@ -146,12 +147,27 @@ cp -R "$BUILD_DIR/YapTextMac.app" "$DEST"
 
 rm -rf "$BUILD_DIR"
 
+# --------------------------------------------------
+#  Code signing — ad-hoc
+# --------------------------------------------------
+# We tried a self-signed cert in a dedicated keychain (commit history has
+# the details) to keep the cdhash stable and persist AX across rebuilds.
+# TCC rejected the grant — toggling YapTextMac ON in Settings recorded the
+# row but AXIsProcessTrusted() kept returning false. Reverted to ad-hoc.
+# Cost: user re-grants AX after each install. Benefit: it actually works.
+#
+# Clean up any leftover from the cert experiment so it can't interfere.
+LEGACY_CERT_KEYCHAIN="$HOME/Library/Application Support/YapTextMac/codesign.keychain-db"
+if [ -f "$LEGACY_CERT_KEYCHAIN" ]; then
+    security delete-keychain "$LEGACY_CERT_KEYCHAIN" >/dev/null 2>&1 || true
+    rm -f "$LEGACY_CERT_KEYCHAIN"
+fi
+
 codesign --force --deep --sign - "$DEST" 2>/dev/null
 
-# Every rebuild gives the ad-hoc binary a new code identity, which silently
-# invalidates the previous macOS Accessibility grant (auto-paste falls back
-# to clipboard-only). Reset the grant so the next launch starts clean and
-# the user gets a fresh, working permission flow.
+# Every rebuild gives the ad-hoc binary a new cdhash, which invalidates
+# the previous AX grant. Wipe the stale row so the next launch gives the
+# user a fresh, working grant flow instead of a half-broken stale one.
 tccutil reset Accessibility com.moshbari.yaptextmac >/dev/null 2>&1 || true
 tccutil reset PostEvent com.moshbari.yaptextmac >/dev/null 2>&1 || true
 
@@ -185,9 +201,14 @@ if [[ "$LAUNCH" == "y" || "$LAUNCH" == "Y" ]]; then
     open "$DEST"
     echo "   ✅ Launched! Look for the mic icon in your menu bar."
     echo ""
-    echo "🔐 Auto-paste needs Accessibility permission. Each rebuild"
-    echo "   invalidates the previous grant, so I'll open System Settings"
-    echo "   for you — find YapTextMac in the list and toggle it ON."
+    echo "🔐 IMPORTANT: Accessibility must be re-granted (the rebuild invalidated"
+    echo "   the previous grant). I'm opening System Settings → Accessibility."
+    echo ""
+    echo "   In that pane:"
+    echo "   1. If you see an existing 'YapTextMac' entry, REMOVE it with the '−' button."
+    echo "   2. Click the '+' button, navigate to /Applications, pick YapTextMac.app."
+    echo "   3. Toggle YapTextMac ON."
+    echo "   4. Auto-paste will work from your next dictation onward."
     sleep 1
     open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
 fi

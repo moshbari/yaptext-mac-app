@@ -56,13 +56,20 @@ class TranscriptionManager: ObservableObject {
         didSet { UserDefaults.standard.set(autoPasteEnabled, forKey: "autoPasteEnabled") }
     }
 
-    // Target app for auto-paste — captured at recording start
-    private var targetApp: NSRunningApplication?
+    // Per-recording target app for auto-paste, keyed by PendingRecording.id.
+    // Only the initial attempt has an entry here. Retries (fired later from
+    // the UI button) have no target app and fall back to clipboard-only.
+    private var targetApps: [UUID: NSRunningApplication] = [:]
 
     /// ID of the most-recently-saved history entry. PolishService updates this
     /// when the user polishes the latest dictation, so history reflects the
     /// final polished version rather than the raw transcript.
     var lastHistoryEntryID: UUID?
+
+    /// ID of the in-flight recording (set in startRecording, cleared after
+    /// transcription resolves). Needed so stopRecording can route to the
+    /// right pending entry.
+    private var currentPendingID: UUID?
 
     let objectWillChange = ObservableObjectPublisher()
 
@@ -170,19 +177,24 @@ class TranscriptionManager: ObservableObject {
 
         currentMode = mode
 
-        // Capture target app for auto-paste — only if it's NOT YapTextMac itself
-        let frontmost = NSWorkspace.shared.frontmostApplication
-        if let app = frontmost, app.bundleIdentifier != Bundle.main.bundleIdentifier {
-            targetApp = app
-        } else {
-            targetApp = nil
-        }
-
         transcribedText = ""
         lastAction = ""
 
-        let tempDir = FileManager.default.temporaryDirectory
-        audioFileURL = tempDir.appendingPathComponent("yaptextmac_\(UUID().uuidString).m4a")
+        // Reserve a persistent slot in PendingRecordingsManager. AVAudioRecorder
+        // writes directly into this path; the file survives transcription failures
+        // until the user retries successfully (or deletes the row).
+        let pending = PendingRecordingsManager.shared.register(mode: modeTag(mode))
+        currentPendingID = pending.id
+        audioFileURL = pending.fileURL
+
+        // Capture target app for auto-paste — only if it's NOT YapTextMac itself.
+        // Stored per-pending-id so a manual retry later doesn't try to paste into
+        // a stale (possibly terminated) app.
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        if let app = frontmost, app.bundleIdentifier != Bundle.main.bundleIdentifier {
+            targetApps[pending.id] = app
+        }
+
         guard let fileURL = audioFileURL else { return }
 
         let settings: [String: Any] = [
@@ -228,19 +240,71 @@ class TranscriptionManager: ObservableObject {
         }
         NSSound(named: "Pop")?.play()
 
-        guard let fileURL = audioFileURL else {
+        guard let pendingID = currentPendingID else {
             statusMessage = "Ready — ⌘⇧D (EN), ⌘⇧E (BN), ⌘⇧P (Banglish)"
             return
         }
+        currentPendingID = nil
 
-        // Route to the right backend
-        switch currentMode {
+        // First attempt + up to 2 auto-retries (5s, 15s). Manual retries from
+        // the UI hit attemptTranscription directly with isAutoRetry=false.
+        attemptTranscription(pendingID: pendingID, autoRetryRemaining: 2)
+    }
+
+    // MARK: - Retry entry point (called from MainView's pending list)
+
+    /// User-triggered retry for a recording that ran out of auto-retries.
+    /// Refreshes status to indicate work is in flight and re-fires the request.
+    func retryPending(id: UUID) {
+        guard let entry = PendingRecordingsManager.shared.find(id: id) else { return }
+        statusMessage = "⏳ Retrying \(entry.displayMode)…"
+        attemptTranscription(pendingID: id, autoRetryRemaining: 0)
+    }
+
+    // MARK: - Transcription request fanout (initial + retries)
+
+    private func attemptTranscription(pendingID: UUID, autoRetryRemaining: Int) {
+        guard let entry = PendingRecordingsManager.shared.find(id: pendingID) else { return }
+        PendingRecordingsManager.shared.markRetrying(id: pendingID)
+
+        let mode = transcriptionMode(forTag: entry.mode)
+        switch mode {
         case .english:
-            sendToWhisper(fileURL: fileURL)
+            sendToWhisper(pendingID: pendingID,
+                          fileURL: entry.fileURL,
+                          autoRetryRemaining: autoRetryRemaining)
         case .bengali:
-            sendToSarvam(fileURL: fileURL, mode: .bengali)
+            sendToSarvam(pendingID: pendingID,
+                         fileURL: entry.fileURL,
+                         mode: .bengali,
+                         autoRetryRemaining: autoRetryRemaining)
         case .banglish:
-            sendToSarvam(fileURL: fileURL, mode: .banglish)
+            sendToSarvam(pendingID: pendingID,
+                         fileURL: entry.fileURL,
+                         mode: .banglish,
+                         autoRetryRemaining: autoRetryRemaining)
+        }
+    }
+
+    /// Either schedule another auto-retry or leave the row as a manual-retry
+    /// candidate. Either way the audio file stays on disk.
+    private func handleTranscriptionFailure(pendingID: UUID,
+                                            error: String,
+                                            autoRetryRemaining: Int) {
+        if autoRetryRemaining > 0 {
+            // Backoff: 5s then 15s. Status shows what's happening so the user
+            // doesn't think the app is frozen.
+            let delay: TimeInterval = (autoRetryRemaining == 2) ? 5 : 15
+            statusMessage = "⚠️ \(error) — retrying in \(Int(delay))s…"
+            PendingRecordingsManager.shared.markFailed(id: pendingID, error: error)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.attemptTranscription(pendingID: pendingID,
+                                           autoRetryRemaining: autoRetryRemaining - 1)
+            }
+        } else {
+            PendingRecordingsManager.shared.markFailed(id: pendingID, error: error)
+            statusMessage = "⚠️ \(error) — tap Retry in the Pending list."
+            lastAction = "💾 Recording saved — retry from the popover."
         }
     }
 
@@ -257,7 +321,7 @@ class TranscriptionManager: ObservableObject {
 
     // MARK: - English pipeline (OpenAI Whisper)
 
-    private func sendToWhisper(fileURL: URL) {
+    private func sendToWhisper(pendingID: UUID, fileURL: URL, autoRetryRemaining: Int) {
         // English transcription is now routed through the YapText server on
         // Railway (same backend the iOS app uses). The server holds the
         // OpenAI key and handles long-audio chunking/punctuation. The user's
@@ -267,11 +331,17 @@ class TranscriptionManager: ObservableObject {
 
         guard FileManager.default.fileExists(atPath: fileURL.path),
               let audioData = try? Data(contentsOf: fileURL) else {
-            statusMessage = "⚠️ Could not read audio file"; return
+            handleTranscriptionFailure(pendingID: pendingID,
+                                       error: "Could not read audio file",
+                                       autoRetryRemaining: autoRetryRemaining)
+            return
         }
+        // Too-short recordings will never transcribe — drop the row + file.
         guard audioData.count > 1000 else {
             statusMessage = "Recording too short. Try again."
-            cleanup(fileURL: fileURL); return
+            PendingRecordingsManager.shared.remove(id: pendingID)
+            targetApps.removeValue(forKey: pendingID)
+            return
         }
 
         // YapText API (Railway) — same constants used by SarvamService.
@@ -301,34 +371,50 @@ class TranscriptionManager: ObservableObject {
         request.httpBody = body
 
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            defer { self?.cleanup(fileURL: fileURL) }
             DispatchQueue.main.async {
+                guard let self = self else { return }
                 if let error = error {
-                    self?.statusMessage = "⚠️ Network error: \(error.localizedDescription)"; return
+                    self.handleTranscriptionFailure(pendingID: pendingID,
+                                                   error: "Network error: \(error.localizedDescription)",
+                                                   autoRetryRemaining: autoRetryRemaining)
+                    return
                 }
                 guard let http = response as? HTTPURLResponse, let data = data else {
-                    self?.statusMessage = "⚠️ Invalid response"; return
+                    self.handleTranscriptionFailure(pendingID: pendingID,
+                                                   error: "Invalid response",
+                                                   autoRetryRemaining: autoRetryRemaining)
+                    return
                 }
                 if http.statusCode == 200 {
                     if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                        let text = (json["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                        !text.isEmpty {
-                        self?.transcribedText = text
-                        self?.finishTranscription()
+                        self.transcribedText = text
+                        self.finishTranscription(pendingID: pendingID)
                     } else {
-                        self?.statusMessage = "No speech detected. Try again."
+                        // 200 but no speech — not worth keeping the audio.
+                        self.statusMessage = "No speech detected. Try again."
+                        PendingRecordingsManager.shared.remove(id: pendingID)
+                        self.targetApps.removeValue(forKey: pendingID)
                     }
                 } else if http.statusCode == 401 {
-                    self?.statusMessage = "⚠️ App auth failed. Update YapText to the latest version."
+                    // Auth failure is not transient — manual retry won't help either.
+                    self.statusMessage = "⚠️ App auth failed. Update YapText to the latest version."
+                    PendingRecordingsManager.shared.markFailed(id: pendingID,
+                                                               error: "App auth failed (update needed)")
                 } else if http.statusCode == 429 {
-                    self?.statusMessage = "⚠️ Server busy. Wait and try again."
+                    self.handleTranscriptionFailure(pendingID: pendingID,
+                                                   error: "Server busy",
+                                                   autoRetryRemaining: autoRetryRemaining)
                 } else {
                     var msg = "Server error (\(http.statusCode))"
                     if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                        let err = json["error"] as? String {
                         msg = err
                     }
-                    self?.statusMessage = "⚠️ \(String(msg.prefix(120)))"
+                    self.handleTranscriptionFailure(pendingID: pendingID,
+                                                   error: String(msg.prefix(120)),
+                                                   autoRetryRemaining: autoRetryRemaining)
                 }
             }
         }.resume()
@@ -336,28 +422,38 @@ class TranscriptionManager: ObservableObject {
 
     // MARK: - Bengali / Banglish pipeline (Sarvam)
 
-    private func sendToSarvam(fileURL: URL, mode: SarvamService.SarvamMode) {
+    private func sendToSarvam(pendingID: UUID,
+                              fileURL: URL,
+                              mode: SarvamService.SarvamMode,
+                              autoRetryRemaining: Int) {
         sarvamService.transcribe(
             fileURL: fileURL,
             apiKey: sarvamApiKey,
             mode: mode
         ) { [weak self] result in
-            defer { self?.cleanup(fileURL: fileURL) }
+            guard let self = self else { return }
             switch result {
             case .success(let text):
-                self?.transcribedText = text
-                self?.finishTranscription()
+                self.transcribedText = text
+                self.finishTranscription(pendingID: pendingID)
             case .failure(let reason):
-                self?.statusMessage = "⚠️ \(reason)"
+                self.handleTranscriptionFailure(pendingID: pendingID,
+                                                error: reason,
+                                                autoRetryRemaining: autoRetryRemaining)
             }
         }
     }
 
-    private func cleanup(fileURL: URL) { try? FileManager.default.removeItem(at: fileURL) }
-
     // MARK: - Finalize (copy + auto-paste)
 
-    private func finishTranscription() {
+    private func finishTranscription(pendingID: UUID) {
+        // Capture mode BEFORE removing the row (remove() dispatches async).
+        let mode = pendingEntryMode(pendingID: pendingID) ?? currentMode
+
+        // The audio for this row has been transcribed — drop the file + row.
+        PendingRecordingsManager.shared.remove(id: pendingID)
+        let targetApp = targetApps.removeValue(forKey: pendingID)
+
         let text = transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             statusMessage = "Ready — ⌘⇧D (EN), ⌘⇧E (BN), ⌘⇧P (Banglish)"
@@ -367,7 +463,7 @@ class TranscriptionManager: ObservableObject {
         // Persist to history (the polished version, if any, will overwrite this entry's text)
         lastHistoryEntryID = HistoryManager.shared.save(
             text: text,
-            language: HistoryManager.languageTag(forMode: currentMode)
+            language: HistoryManager.languageTag(forMode: mode)
         )
 
         // Always copy to clipboard first
@@ -376,7 +472,7 @@ class TranscriptionManager: ObservableObject {
         // If auto-paste is OFF → just clipboard
         guard autoPasteEnabled else {
             lastAction = "📋 Copied — paste with ⌘V"
-            statusMessage = "Done (\(currentMode.label)) — Copied to clipboard"
+            statusMessage = "Done (\(mode.label)) — Copied to clipboard"
             return
         }
 
@@ -387,10 +483,11 @@ class TranscriptionManager: ObservableObject {
             return
         }
 
-        // Need a target app that isn't YapTextMac, and still running
+        // Need a target app that isn't YapTextMac, and still running.
+        // Manual retries have no stored targetApp — they always fall through here.
         guard let target = targetApp, !target.isTerminated else {
-            lastAction = "📋 Copied — Use shortcut from your text field next time"
-            statusMessage = "Done — Copied to clipboard"
+            lastAction = "📋 Copied — paste with ⌘V"
+            statusMessage = "Done (\(mode.label)) — Copied to clipboard"
             return
         }
 
@@ -402,8 +499,33 @@ class TranscriptionManager: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
             self?.simulateCmdV()
             self?.lastAction = "✅ Auto-pasted into \(appName)"
-            self?.statusMessage = "Done (\(self?.currentMode.label ?? "")) — Auto-pasted into \(appName)"
+            self?.statusMessage = "Done (\(mode.label)) — Auto-pasted into \(appName)"
         }
+    }
+
+    // MARK: - Mode tag helpers (bridge between the enum and the persisted string)
+
+    private func modeTag(_ mode: TranscriptionMode) -> String {
+        switch mode {
+        case .english:  return "english"
+        case .bengali:  return "bengali"
+        case .banglish: return "banglish"
+        }
+    }
+
+    private func transcriptionMode(forTag tag: String) -> TranscriptionMode {
+        switch tag {
+        case "bengali":  return .bengali
+        case "banglish": return .banglish
+        default:         return .english
+        }
+    }
+
+    /// Resolve a pending row's mode at success time. The row is removed
+    /// just before this is called, so we also fall through to `currentMode`.
+    private func pendingEntryMode(pendingID: UUID) -> TranscriptionMode? {
+        guard let tag = PendingRecordingsManager.shared.find(id: pendingID)?.mode else { return nil }
+        return transcriptionMode(forTag: tag)
     }
 
     private func simulateCmdV() {
